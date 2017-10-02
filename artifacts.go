@@ -719,6 +719,35 @@ func run() error {
 		Description: "This command modifies existing image or artifact file provided by pathspec.",
 	}
 
+	modify.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "key, k",
+			Usage: "Full path to the private key that will be used to sign the artifact after modifying.",
+		},
+		cli.StringFlag{
+			Name:  "server-uri, u",
+			Usage: "Mender server URI; the default URI will be replaced with given one.",
+		},
+		cli.StringFlag{
+			Name: "server-cert, c",
+			Usage: "Full path to the certificate file that will be used for validating " +
+				"Mender server by the client.",
+		},
+		cli.StringFlag{
+			Name: "verification-key, v",
+			Usage: "Full path to the public verification key that is used by the client  " +
+				"to verify the artifact.",
+		},
+		cli.StringFlag{
+			Name:  "name, n",
+			Usage: "New name of the artifact.",
+		},
+		cli.StringFlag{
+			Name:  "tenant-token, t",
+			Usage: "Full path to the tenant token that will be injected into modified file.",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		write,
 		read,
