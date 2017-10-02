@@ -272,18 +272,13 @@ func getKey(path string) ([]byte, error) {
 	return key.Bytes(), nil
 }
 
-func validateArtifact(c *cli.Context) error {
-	if c.NArg() == 0 {
-		return cli.NewExitError("Nothing specified, nothing validated. \nMaybe you wanted"+
-			" to say 'artifacts validate <pathspec>'?", 1)
-	}
-
+func checkIfValid(artifactPath, keyPath string) error {
 	var verifyCallback areader.SignatureVerifyFn
 
-	if len(c.String("key")) != 0 {
-		key, err := getKey(c.String("key"))
+	if keyPath != "" {
+		key, err := getKey(keyPath)
 		if err != nil {
-			return cli.NewExitError(err.Error(), 1)
+			return err
 		}
 		s := artifact.NewVerifier(key)
 		verifyCallback = s.Verify
@@ -302,18 +297,31 @@ func validateArtifact(c *cli.Context) error {
 		return nil
 	}
 
-	_, err := read(c.Args().First(), ver, nil)
+	_, err := read(artifactPath, ver, nil)
 	if err != nil {
-		return cli.NewExitError(err.Error(), 1)
+		return err
 	}
 
 	if !valid {
-		return cli.NewExitError("Artifact file '"+c.Args().First()+
-			"' formatted correctly, but error validating signature.", 1)
-	} else {
-		fmt.Println("Artifact file '" + c.Args().First() + "' validated successfully")
+		return errors.New("Artifact file '" + artifactPath +
+			"' formatted correctly, but error validating signature.")
 	}
 	return nil
+}
+
+func validateArtifact(c *cli.Context) error {
+	if c.NArg() == 0 {
+		return cli.NewExitError("Nothing specified, nothing validated. \nMaybe you wanted"+
+			" to say 'artifacts validate <pathspec>'?", 1)
+	}
+
+	if err := checkIfValid(c.Args().First(), c.String("key")); err != nil {
+		return cli.NewExitError(err.Error(), 1)
+	}
+
+	fmt.Println("Artifact file '" + c.Args().First() + "' validated successfully")
+	return nil
+
 }
 
 func createSignature(raw *artifact.Raw, w *awriter.Writer, key []byte) error {
@@ -505,13 +513,35 @@ func signExisting(c *cli.Context) error {
 	return nil
 }
 
+func modifyExisting(c *cli.Context, mounted MountPoints) error {
+	return nil
+}
+
+func unpackArtifact(name string) (string, error) {
+	return "", nil
+}
+
 func modifyArtifact(c *cli.Context) error {
 	if c.NArg() == 0 {
 		return cli.NewExitError("Nothing specified, nothing will be modified. \n"+
 			"Maybe you wanted to say 'artifacts read <pathspec>'?", 1)
 	}
 
-	file, err := os.OpenFile(c.Args().First(), os.O_RDWR, 0)
+	fileToModify := c.Args().First()
+	isArtifact := false
+
+	// first we need to check  if we are having artifact or image file
+	if err := checkIfValid(fileToModify, c.String("key")); err == nil {
+		// we have VALID artifact, so we need to unpack it and store header
+		isArtifact = true
+
+		fileToModify, err = unpackArtifact(c.Args().First())
+		if err != nil {
+			return cli.NewExitError("Can not process artifact: "+err.Error(), 1)
+		}
+	}
+
+	file, err := os.OpenFile(fileToModify, os.O_RDWR, 0)
 	if err != nil {
 		return cli.NewExitError("Can not open file: "+err.Error(), 1)
 	}
@@ -532,12 +562,18 @@ func modifyArtifact(c *cli.Context) error {
 	if !haveValidDevices(mounted) {
 		fmt.Println("Do not have any valid files to modify; exiting")
 	} else {
-		// modify existing file here
+		if err = modifyExisting(c, mounted); err != nil {
+			fmt.Printf("Error modifying artifact: %s\n", err.Error())
+		}
 	}
 
 	err = unmountFile(conn, mounted)
 	if err != nil {
 		return cli.NewExitError("Can not umount devices: "+err.Error(), 1)
+	}
+
+	if isArtifact {
+		// re-create the artifact
 	}
 
 	return nil
