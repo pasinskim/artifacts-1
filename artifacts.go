@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/godbus/dbus"
 	"github.com/mendersoftware/mender-artifact/areader"
@@ -506,35 +505,10 @@ func signExisting(c *cli.Context) error {
 	return nil
 }
 
-func getDevices(msg *dbus.Signal) error {
-	if strings.HasSuffix(msg.Name, "InterfacesAdded") {
-		for _, v := range msg.Body {
-			if data, ok := v.(dbus.ObjectPath); ok {
-				if strings.Contains(string(data), "block_device") {
-					// TODO:
-					fmt.Printf("dev: %v\n", string(data))
-				}
-			}
-		}
-	}
-	return nil
-}
-
 func modifyArtifact(c *cli.Context) error {
 	if c.NArg() == 0 {
 		return cli.NewExitError("Nothing specified, nothing will be modified. \n"+
 			"Maybe you wanted to say 'artifacts read <pathspec>'?", 1)
-	}
-
-	// start connection with dbus
-	conn, err := dbus.SystemBus()
-	if err != nil {
-		return cli.NewExitError("Failed to connect to dbus: "+err.Error(), 1)
-	}
-	defer conn.Close()
-
-	if !conn.SupportsUnixFDs() {
-		return cli.NewExitError("Connection does not support unix fsd; exiting", 1)
 	}
 
 	file, err := os.OpenFile(c.Args().First(), os.O_RDWR, 0)
@@ -543,35 +517,28 @@ func modifyArtifact(c *cli.Context) error {
 	}
 	defer file.Close()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	ch := make(chan *dbus.Signal)
-
-	if err = registerDeviceCallback(conn, ch, &wg, getDevices); err != nil {
-		return cli.NewExitError("Can not register dbus callback: "+err.Error(), 1)
+	// start connection with dbus
+	conn, err := dbus.SystemBus()
+	if err != nil {
+		return cli.NewExitError("Failed to connect to dbus: "+err.Error(), 1)
 	}
+	defer conn.Close()
 
-	// wait for the callback to be completed
-	defer func() {
-		close(ch)
-		wg.Wait()
-	}()
-
-	loopDevice, err := mountFile(conn, dbus.UnixFD(file.Fd()))
+	mounted, err := mountFile(conn, file.Fd())
 	if err != nil {
 		return cli.NewExitError("Can not loop mount file: "+err.Error(), 1)
 	}
-	// TODO:
-	fmt.Printf("Loop device mounted: %s\n", loopDevice)
 
-	prop, err := getDeviceProperties(conn, loopDevice,
-		[]string{"IdUUID", "ReadOnly", "MountPoints"})
-	if err != nil {
-		return cli.NewExitError("Can not get device properties: "+err.Error(), 1)
+	if !haveValidDevices(mounted) {
+		fmt.Println("Do not have any valid files to modify; exiting")
+	} else {
+		// modify existing file here
 	}
-	// TODO
-	fmt.Printf("Received device properties: %v\n", prop)
+
+	err = unmountFile(conn, mounted)
+	if err != nil {
+		return cli.NewExitError("Can not umount devices: "+err.Error(), 1)
+	}
 
 	return nil
 }
@@ -685,6 +652,7 @@ func run() error {
 	// sign
 	//
 	sign := cli.Command{
+
 		Name:        "sign",
 		Usage:       "Signs existing artifact file.",
 		Action:      signExisting,
