@@ -19,7 +19,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -42,9 +44,109 @@ var (
 	fakeErrWriter = &bytes.Buffer{}
 )
 
+type menderConfig struct {
+	// ArtifactVerifyKey            string
+	InventoryPollIntervalSeconds int
+	RetryPollIntervalSeconds     int
+	RootfsPartA                  string
+	RootfsPartB                  string
+	ServerCertificate            string
+	ServerURL                    string
+	TenantToken                  string
+	UpdatePollIntervalSeconds    int
+}
+
 func init() {
 	cli.OsExiter = fakeOsExiter
 	cli.ErrWriter = fakeErrWriter
+}
+
+func TestModifyTenantToken(t *testing.T) {
+
+	tmpDir, err := ioutil.TempDir("", "etc")
+	assert.NoError(t, err)
+	defer os.RemoveAll(tmpDir) // Will remove all the tempfiles created
+
+	menDir, err := ioutil.TempDir(tmpDir, "mender")
+	assert.NoError(t, err)
+
+	tmpNArtifact, err := ioutil.TempFile(tmpDir, "artifact_info")
+	assert.NoError(t, err)
+
+	_, err = io.WriteString(tmpNArtifact, "artifact_name=old_name")
+	assert.NoError(t, err)
+
+	tmpF, err := ioutil.TempFile(menDir, "mender.conf")
+	assert.NoError(t, err)
+
+	tmpSrvCrt, err := ioutil.TempFile(menDir, "server.crt")
+	assert.NoError(t, err)
+
+	_, err = io.WriteString(tmpSrvCrt, "somecert")
+	assert.NoError(t, err)
+
+	// Dummy standard config
+	mConf := menderConfig{
+		InventoryPollIntervalSeconds: 5,
+		RetryPollIntervalSeconds:     5,
+		RootfsPartA:                  "rootfsa",
+		RootfsPartB:                  "rootfsb",
+		ServerCertificate:            "/etc/mender/server.crt",
+		ServerURL:                    "www.hosted.mender.io",
+		TenantToken:                  "dummy",
+		UpdatePollIntervalSeconds:    5,
+	}
+
+	data, err := json.Marshal(mConf)
+	assert.NoError(t, err)
+
+	// Test the name modification
+	err = modifyName("new_artifact", tmpNArtifact.Name())
+	assert.NoError(t, err)
+
+	raw, err := ioutil.ReadFile(tmpNArtifact.Name())
+	assert.NoError(t, err)
+	assert.Equal(t, "artifact_name=new_artifact", string(raw))
+
+	// Create the initial mender.conf file
+	err = ioutil.WriteFile(tmpF.Name(), data, 0666)
+	assert.NoError(t, err)
+
+	// Test the modified server-URI
+	err = modifyMenderConfVar("ServerURL", "www.example.com", tmpF.Name())
+	assert.NoError(t, err)
+	err = getUpdatedConfig(&mConf, tmpF.Name())
+	assert.NoError(t, err)
+	assert.Equal(t, "www.example.com", mConf.ServerURL)
+
+	// Test the modified tenant-token
+	err = modifyMenderConfVar("TenantToken", "testtoken", tmpF.Name())
+	assert.NoError(t, err)
+	err = getUpdatedConfig(&mConf, tmpF.Name())
+	assert.NoError(t, err)
+	assert.Equal(t, "testtoken", mConf.TenantToken)
+
+	// Create a new server-cert file in the root dir
+	newCertFile, err := ioutil.TempFile(tmpDir, "server.crt.new")
+	assert.NoError(t, err)
+	_, err = io.WriteString(newCertFile, "somenewcert")
+	assert.NoError(t, err)
+
+	// Test the server-cert modification
+	err = modifyServerCert(newCertFile.Name(), tmpSrvCrt.Name())
+	assert.NoError(t, err)
+	rawCert, err := ioutil.ReadFile(tmpSrvCrt.Name())
+	assert.NoError(t, err)
+	assert.Equal(t, "somenewcert", string(rawCert))
+
+}
+
+func getUpdatedConfig(mConf *menderConfig, mcfp string) error {
+	raw, err := ioutil.ReadFile(mcfp)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, mConf)
 }
 
 func WriteArtifact(dir string, ver int) error {
