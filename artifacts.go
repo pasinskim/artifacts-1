@@ -16,6 +16,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -513,7 +514,43 @@ func signExisting(c *cli.Context) error {
 	return nil
 }
 
-func modifyExisting(c *cli.Context, mounted MountPoints) error {
+// oblivious to whether the file exists beforehand
+func modifyName(newName, aifp string) error {
+	data := []byte(strings.Join([]string{"artifact_name", newName}, "="))
+	return ioutil.WriteFile(aifp, data, 0755)
+}
+
+func modifyServerCert(newCertPath, certPath string) error {
+	newCert, err := os.Open(newCertPath)
+	if err != nil {
+		return err
+	}
+	oldCert, err := os.OpenFile(certPath, os.O_RDONLY|os.O_WRONLY, 0755)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(oldCert, newCert)
+	return err
+}
+
+func modifyMenderConfVar(confName, newConfVar, mcfp string) error {
+	raw, err := ioutil.ReadFile(mcfp)
+	if err != nil {
+		return err
+	}
+	var f interface{}
+	if err = json.Unmarshal(raw, &f); err != nil {
+		return err
+	}
+	f.(map[string]interface{})[confName] = newConfVar
+	data, err := json.Marshal(&f)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(mcfp, data, 0666)
+}
+
+func modifyKey(newKeyPath string, mounted MountPoints) error {
 	return nil
 }
 
