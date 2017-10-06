@@ -397,7 +397,7 @@ func TestSignExistingV1(t *testing.T) {
 
 	err = run()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Can not sign v1 artifact")
+	assert.Contains(t, err.Error(), "can not create version 1 signed artifact")
 }
 
 func TestSignExistingV2(t *testing.T) {
@@ -471,8 +471,7 @@ func TestArtifactsValidateError(t *testing.T) {
 	err = run()
 	assert.Error(t, err)
 	assert.Equal(t, 1, lastExitCode)
-	assert.Equal(t, "Pathspec 'non-existing' does not match any files.\n",
-		fakeErrWriter.String())
+	assert.Contains(t, fakeErrWriter.String(), "no such file")
 }
 
 func TestArtifactsValidate(t *testing.T) {
@@ -513,8 +512,7 @@ func TestArtifactsRead(t *testing.T) {
 	err = run()
 	assert.Error(t, err)
 	assert.Equal(t, 1, lastExitCode)
-	assert.Equal(t, "Pathspec 'non-existing' does not match any files.\n",
-		fakeErrWriter.String())
+	assert.Contains(t, fakeErrWriter.String(), "no such file")
 }
 
 func TestWithScripts(t *testing.T) {
