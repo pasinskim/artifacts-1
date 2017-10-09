@@ -52,6 +52,7 @@ func registerDeviceCallback(conn *dbus.Conn, signalC chan *dbus.Signal,
 		for {
 			msg, ok := <-signalC
 			if !ok {
+				fmt.Println("channel error")
 				return
 			}
 
@@ -59,6 +60,7 @@ func registerDeviceCallback(conn *dbus.Conn, signalC chan *dbus.Signal,
 			if err != nil {
 				return
 			}
+			fmt.Printf("have data to write: %s\n", dev)
 			deviceC <- dev
 		}
 	}()
@@ -130,12 +132,17 @@ func mountFile(conn *dbus.Conn, fd uintptr) (MountPoints, error) {
 	for {
 		select {
 		case devices := <-devicesC:
+			fmt.Printf("have some data from channel: %v\n", devices)
 			for _, dev := range devices {
 				// the only valid devices will be to ones with 'knownDevice' prefix
 				if strings.HasPrefix(dev, knownDevice) {
 					mp, err := getMonutPoint(conn, dev)
+					fmt.Printf("after getting mount point: %v\n", err)
 					if err != nil && err != ErrorNoMountPoints {
-						return mountPoints, err
+						fmt.Println("asdasdfasdf")
+
+						continue
+
 					} else if err == ErrorNoMountPoints {
 						continue
 					}
@@ -143,6 +150,7 @@ func mountFile(conn *dbus.Conn, fd uintptr) (MountPoints, error) {
 				}
 			}
 		case <-time.After(time.Second * 1):
+			fmt.Println("timeout")
 			// it is hard to figure out how long should we wait; just see if 1s is enough
 			conn.RemoveSignal(signalC)
 			close(signalC)
@@ -171,15 +179,15 @@ func (me MountError) Error() string {
 }
 
 func getMonutPoint(conn *dbus.Conn, device string) (string, error) {
-
 	// we are only interested in monut points here
 	prop, err := getDeviceProperties(conn, device, []string{"MountPoints"})
 	if err == nil {
 		switch t := prop["MountPoints"].(type) {
 		case [][]uint8:
+			fmt.Printf("have Mount Point\n")
 			return string(t[0]), nil
 		default:
-			return "", errors.New("unsupported data type")
+			return "", errors.Errorf("unsupported data type: %v", t)
 		}
 	}
 	return "", ErrorNoMountPoints
@@ -188,21 +196,21 @@ func getMonutPoint(conn *dbus.Conn, device string) (string, error) {
 func getDeviceProperties(conn *dbus.Conn, device string,
 	props []string) (map[string]interface{}, error) {
 
-	prop := make(map[string]dbus.Variant)
+	var prop dbus.Variant
 	requested := make(map[string]interface{}, 0)
 	obj := conn.Object("org.freedesktop.UDisks2", dbus.ObjectPath(device))
-	call := obj.Call("org.freedesktop.DBus.Properties.GetAll", 0, "org.freedesktop.UDisks2.Filesystem")
+	call := obj.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.UDisks2.Filesystem", "MountPoints")
 	if call.Err != nil {
+		fmt.Println("have call error")
 		return nil, errors.Wrapf(call.Err, "can not get device [%s] properties", device)
 	}
-	if err := call.Store(prop); err != nil {
+	if err := call.Store(&prop); err != nil {
+		fmt.Println("error storing properties")
 		return nil, errors.Wrapf(err, "can not store device [%s] properties", device)
 	}
 
-	for k, v := range prop {
-		if contains(props, k) {
-			requested[k] = v.Value()
-		}
-	}
+	fmt.Printf("[%s] have properties: %v \n", device, prop)
+
+	requested["MountPoints"] = prop
 	return requested, nil
 }

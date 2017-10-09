@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus"
 	"github.com/mendersoftware/mender-artifact/areader"
@@ -390,6 +391,12 @@ func signExisting(c *cli.Context) error {
 }
 
 func modifyExisting(c *cli.Context, mounted MountPoints) error {
+	if c.String("name") != "" {
+		// modify artifact name
+		if err := modifyName(c.String("name"), mounted); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -517,9 +524,31 @@ func repack(from io.Reader, to io.Writer, key []byte,
 }
 
 // oblivious to whether the file exists beforehand
-func modifyName(newName, aifp string) error {
-	data := []byte(strings.Join([]string{"artifact_name", newName}, "="))
-	return ioutil.WriteFile(aifp, data, 0755)
+func modifyName(name string, mp MountPoints) error {
+	time.Sleep(time.Second)
+	data := fmt.Sprintf("artifact_name=%s", name)
+	for _, mounted := range mp {
+		nameFile := filepath.Join(mounted, "/etc/mender/artifact_info")
+		os.Chmod(nameFile, 0777)
+		_, err := os.Stat(nameFile)
+		if err != nil && os.IsNotExist(err) {
+			fmt.Printf("not exists\n")
+			continue
+		} else if err != nil {
+			fmt.Printf("error: %v\n", err)
+			return err
+		} else {
+			nFile, err := os.OpenFile(nameFile, os.O_RDONLY|os.O_WRONLY, 0755)
+			if err != nil {
+				return err
+			}
+			defer nFile.Close()
+			if _, err = nFile.WriteString(data); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func modifyServerCert(newCertPath, certPath string) error {
@@ -619,12 +648,12 @@ func modifyArtifact(c *cli.Context) error {
 		return cli.NewExitError("Can not loop mount file: "+err.Error(), 1)
 	}
 
-	if !haveValidDevices(mounted) {
-		fmt.Println("Do not have any valid files to modify; exiting")
-	} else {
+	if haveValidDevices(mounted) {
 		if err = modifyExisting(c, mounted); err != nil {
 			fmt.Printf("Error modifying artifact: %s\n", err.Error())
 		}
+	} else {
+		fmt.Println("Do not have any valid files to modify; exiting")
 	}
 
 	err = unmountFile(conn, mounted)
