@@ -529,14 +529,16 @@ func modifyName(name string, mp MountPoints) error {
 	data := fmt.Sprintf("artifact_name=%s", name)
 	for _, mounted := range mp {
 		nameFile := filepath.Join(mounted, "/etc/mender/artifact_info")
-		os.Chmod(nameFile, 0777)
+		fmt.Printf("name file: %s\n", nameFile)
 		_, err := os.Stat(nameFile)
+		fmt.Printf("stat error: %v\n", err)
+
 		if err != nil && os.IsNotExist(err) {
 			fmt.Printf("not exists\n")
 			continue
 		} else if err != nil {
 			fmt.Printf("error: %v\n", err)
-			return err
+			continue
 		} else {
 			nFile, err := os.OpenFile(nameFile, os.O_RDONLY|os.O_WRONLY, 0755)
 			if err != nil {

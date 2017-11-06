@@ -140,7 +140,6 @@ func mountFile(conn *dbus.Conn, fd uintptr) (MountPoints, error) {
 					fmt.Printf("after getting mount point: %v\n", err)
 					if err != nil && err != ErrorNoMountPoints {
 						fmt.Println("asdasdfasdf")
-
 						continue
 
 					} else if err == ErrorNoMountPoints {
@@ -185,7 +184,13 @@ func getMonutPoint(conn *dbus.Conn, device string) (string, error) {
 		switch t := prop["MountPoints"].(type) {
 		case [][]uint8:
 			fmt.Printf("have Mount Point\n")
-			return string(t[0]), nil
+			// we have data null terminated so we need to remove last elament
+			// before converting to string
+			if len(t) > 0 && len(t[0]) > 0 {
+				return string(t[0][:len(t[0])-1]), nil
+			} else {
+				return "", errors.New("received empty mount point")
+			}
 		default:
 			return "", errors.Errorf("unsupported data type: %v", t)
 		}
@@ -195,13 +200,13 @@ func getMonutPoint(conn *dbus.Conn, device string) (string, error) {
 
 func getDeviceProperties(conn *dbus.Conn, device string,
 	props []string) (map[string]interface{}, error) {
-
+	//time.Sleep(time.Second * 100)
 	var prop dbus.Variant
 	requested := make(map[string]interface{}, 0)
 	obj := conn.Object("org.freedesktop.UDisks2", dbus.ObjectPath(device))
-	call := obj.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.UDisks2.Filesystem", "MountPoints")
+	call := obj.Call("org.freedesktop.DBus.Properties.Get", 0, "org.freedesktop.UDisks2.Block", "Symlinks")
 	if call.Err != nil {
-		fmt.Println("have call error")
+		fmt.Printf("have call error: %v\n", call.Err)
 		return nil, errors.Wrapf(call.Err, "can not get device [%s] properties", device)
 	}
 	if err := call.Store(&prop); err != nil {
@@ -211,6 +216,6 @@ func getDeviceProperties(conn *dbus.Conn, device string,
 
 	fmt.Printf("[%s] have properties: %v \n", device, prop)
 
-	requested["MountPoints"] = prop
+	requested["MountPoints"] = prop.Value()
 	return requested, nil
 }
