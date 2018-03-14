@@ -26,9 +26,6 @@ import (
 
 func Cat(c *cli.Context) (err error) {
 	if c.NArg() != 1 {
-		if c.NArg() == 2 {
-			return Append(c)
-		}
 		return cli.NewExitError(fmt.Sprintf("Got %d arguments, wants one", c.NArg()), 1)
 	}
 	r, err := NewPartitionReader(c.Args().First(), c.String("key"))
@@ -107,14 +104,15 @@ func Copy(c *cli.Context) (err error) {
 }
 
 func Append(c *cli.Context) error {
-	fmt.Println("Hello")
-
 	var r io.ReadCloser
-	// var w io.WriteCloser
 	var rwcp PartitionReadWriteClosePacker
-	var appendint = 3 // positive infinity
+	var appendint = 3
 	var readindex = 0
 	var err error
+
+	if c.NArg() != 2 {
+		return cli.NewExitError("wrong number of input arguments. Two required", 1)
+	}
 
 	for i, arg := range c.Args() {
 		if arg == "-" {
