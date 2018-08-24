@@ -230,6 +230,7 @@ func (a *artifactExtFile) Close() error {
 		return repackArtifact(a.name, a.path,
 			a.key, filepath.Base(a.name))
 	}
+	os.Remove(a.imagefilepath)
 	return nil
 }
 
@@ -293,6 +294,7 @@ func (ef *extFile) Close() (err error) {
 	}
 	ef.tmpf.Close()    // Ignore
 	os.Remove(ef.path) // ignore error for tmp-dir
+	os.Remove(ef.imagefilepath)
 	return err
 }
 
@@ -341,5 +343,6 @@ func (f *fatFile) Close() (err error) {
 	}
 	f.tmpf.Close()
 	os.Remove(f.path) // Ignore error for tmp-dir
+	os.Remove(f.imageFilePath)
 	return err
 }
